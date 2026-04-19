@@ -16,6 +16,10 @@ client = OpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
+# class TODO:
+#   def update_todo(id: id, content: str, status: str, activeForm: str):
+        
+
 
 # 声明工具 (Tool Declaration) - JSON Schema 格式
 tools = [
@@ -52,8 +56,44 @@ tools = [
                 "required": ["location"]
             }
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_todo",
+            "description": "在任务开始前你需要做一个计划，这个函数用于更新计划列表",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "int",
+                        "description": "计划条目的id, 修改现有计划状态和内容就传入已有的id, 新增就传入新的id"
+                    },
+                    "content": {
+                        "type": "String",
+                        "description": "计划的总标题"
+                    },
+                    "status": {
+                        "type": "String",
+                        "description": "该计划条目的状态, 有三种状态, 分别是: pending,in_progress,completed"
+                    },
+                    "activeForm": {
+                        "type": "String",
+                        "description": "该计划条目执行后的进度描述, 若还没有开始执行, 则传入一个预备的初始状态"
+                    }
+                },
+                "required": ["id", "content", "status", "activeForm"]
+            }
+        }
+    },
 ]
+
+{
+    "content": "Read the failing test",
+    "status": "pending" | "in_progress" | "completed",
+    "activeForm": "Reading the failing test",
+}
+
 # 系统提示词
 messages = [
     {"role": "system", "content": "你是一个得力的助手。你可以调用工具列表中的工具。"},
@@ -63,6 +103,7 @@ messages = [
 TOOL_HANDLERS = {
     "get_weather":       lambda **kw: get_weather(kw["location"]),
     "read_file":  lambda **kw: read_file(kw["path"]),
+    "update_todo":  lambda **kw: TODO.update_todo(kw["item"]),
 }
 
 # 工具函数
