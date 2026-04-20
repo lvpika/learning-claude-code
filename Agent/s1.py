@@ -1,7 +1,9 @@
+from ast import List
 import os
 from random import choice
 from openai import OpenAI
 import json
+from urllib.parse import quote
 
 # 1. 系统提示词
 
@@ -11,15 +13,48 @@ import json
 # 把content输出并追加到messages中，让大模型知道自己的最终输出结果
 # 当finish_reason=='stop'时，用户输入提示词
 
+# 我想要查看北京的天气,然后我想看看./Agent/s1.py中的内容
 client = OpenAI(
     api_key="sk-65d9bcc3ebb447bebd3868ac196eb818",
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-# class TODO:
-#   def update_todo(id: id, content: str, status: str, activeForm: str):
-        
+THINK_OUTPUT = False
 
+class todoManage:
+    # TODO列表
+    items: list[dict] = []
+    def update_todo(self, id: id, content: str, status: str, activeForm: str):
+        print(f"\n[系统日志] 正在调用todo管理工具修改/创建todo")
+        for item in todoManage.items:
+            if id == item.id:
+                # 相同id，更新item数据
+                item.content = content
+                item.status = status
+                item.activeForm = activeForm
+            break
+        else:
+            # 新增
+            todoManage.items.append({
+                "id": id,
+                "status": status,
+                "content": content,
+                "activeForm": activeForm
+            })
+        return todoManage.items
+    
+    def render(self) -> str:
+        if not todoManage.items:
+            return "No todos."
+        lines = []
+        for item in todoManage.items:
+            marker = {"pending": "[ ]", "in_progress": "[>]", "completed": "[x]"}[item["status"]]
+            lines.append(f"{marker} #{item['id']}: {item['activeForm']}")
+        done = sum(1 for t in todoManage.items if t["status"] == "completed")
+        lines.append(f"\n({done}/{len(todoManage.items)} completed)")
+        return "\n".join(lines)
+
+TODO = todoManage()
 
 # 声明工具 (Tool Declaration) - JSON Schema 格式
 tools = [
@@ -61,7 +96,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "update_todo",
-            "description": "在任务开始前你需要做一个计划，这个函数用于更新计划列表",
+            "description": "在任务开始前你需要做一个计划，这个函数用于更新计划列表, 这个工具仅限你自己使用，不要暴露给用户。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -88,22 +123,17 @@ tools = [
     },
 ]
 
-{
-    "content": "Read the failing test",
-    "status": "pending" | "in_progress" | "completed",
-    "activeForm": "Reading the failing test",
-}
 
 # 系统提示词
 messages = [
-    {"role": "system", "content": "你是一个得力的助手。你可以调用工具列表中的工具。"},
+    {"role": "system", "content": "你是一个得力助手，你在执行任务之前，要先使用update_todo创建一个任务列表，并在开始之前标记它为in_progress状态，在完成时标记它为done状态。思考内容要以中文输出。"},
 ]
 
 # 工具处理中心
 TOOL_HANDLERS = {
     "get_weather":       lambda **kw: get_weather(kw["location"]),
     "read_file":  lambda **kw: read_file(kw["path"]),
-    "update_todo":  lambda **kw: TODO.update_todo(kw["item"]),
+    "update_todo":  lambda **kw: TODO.update_todo(int(kw["id"]), kw["content"], kw["status"], kw["activeForm"]),
 }
 
 # 工具函数
@@ -129,9 +159,15 @@ class DictToObj:
         for k, v in d.items():
             setattr(self, k, v)
 result = DictToObj({"finish_reason": "stop"})
+
+rounds_is_update_todo = 0
 # Agent Loop
 while True:
-    
+    # 超过三轮没有更新TODO，提醒大模型需要更新TODO列表
+    if rounds_is_update_todo > 3:
+        messages.append({
+            "role": "user", "content": "请更新你的TODO列表。"
+        })
     # 如果本轮结束，且没有调用工具的请求，则等待用户输入
     if result.finish_reason == "stop":
         userPrompt = ""
@@ -187,21 +223,28 @@ while True:
                     tool_calls[item.index]['function']['arguments'] += item.function.arguments
         
         # 输出思考内容
-        if hasattr(resultDelta, "reasoning_content") and resultDelta.reasoning_content != None:
+        if hasattr(resultDelta, "reasoning_content") and resultDelta.reasoning_content != None and THINK_OUTPUT:
             print(resultDelta.reasoning_content, end='', flush=True)
         if hasattr(result, "finish_reason") and result.finish_reason != None:
             if result.finish_reason == 'tool_calls':
                 # 追加工具大模型自己输出的工具调用信息
                 messages.append({
                     "role": "assistant",
-                    "content": None, 
+                    "content": "", 
                     "tool_calls": tool_calls
                 })
                 # 调用工具
                 for tool in tool_calls:
                     handler = TOOL_HANDLERS.get(tool['function']['name'])
                     arguments = json.loads(tool_calls[0]['function']['arguments'])
-                    toolResult = handler(**arguments)
+                    toolResult = "工具返回内容为空，请直接告诉用户，程序执行错误，并输出当前任务列表。"
+                    try:
+                        toolResult = handler(**arguments)
+                    except Exception as e:
+                        toolResult = f"工具执行出错: {str(e)}，请你检查自己的函数名/参数是否输出正确，如果没有问题，则提示用户。" 
+                    # print(toolResult)
+                    # print(quote(str(toolResult)))
+                    toolResult = quote(str(toolResult))
                     # 追加工具调用结果
                     messages.append({
                         "role": "tool",
@@ -209,14 +252,17 @@ while True:
                         "name": tool_calls[0]['function']['name'],
                         "content": toolResult
                     })
+                    if tool['function']['name'] == 'update_todo':
+                        print(TODO.render())
 
         # 输出最终结果
         if hasattr(resultDelta, "content") and resultDelta.content != None:
             print(resultDelta.content, end='', flush=True)
             resultContent += resultDelta.content
+    print(resultContent)
     # 追加模型输出的最终内容
     messages.append({
         "role": "assistant",
-        "content": resultDelta.content
+        "content": resultContent
     })
 
