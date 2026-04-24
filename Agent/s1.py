@@ -4,7 +4,15 @@ from random import choice
 from openai import OpenAI
 import json
 from urllib.parse import quote
+from dotenv import load_dotenv
+import subprocess
+import os
+# 加载 .env 文件（通常放在项目根目录）
+load_dotenv("/Users/maorongrong/workspace/python/learning-claude-code/env.local")
 
+# 读取变量
+api_key = os.environ.get("API_KEY")
+base_url = os.environ.get("BASE_URL")
 # 1. 系统提示词
 
 # loop:
@@ -15,44 +23,65 @@ from urllib.parse import quote
 
 # 我想要查看北京的天气,然后我想看看./Agent/s1.py中的内容
 client = OpenAI(
-    api_key="sk-65d9bcc3ebb447bebd3868ac196eb818",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key=api_key,
+    base_url=base_url,
 )
 
-THINK_OUTPUT = False
+THINK_OUTPUT = True
+
+def run_bash(command: str) -> str:
+    dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
+    # d 会遍历dangerous列表，如果有任意一个 d in command 为True any就会返回True
+    # in 操作符可以判断字符串的匹配情况，以及列表是否含有某个元素
+    if any(d in command for d in dangerous):
+        return "Error: Dangerous command blocked"
+    try:
+        r = subprocess.run(command, shell=True, cwd="/home",
+                           capture_output=True, text=True, timeout=120)
+        out = (r.stdout + r.stderr).strip()
+        # python里面的三元表达式
+        return out[:50000] if out else "(no output)"
+    except subprocess.TimeoutExpired:
+        return "Error: Timeout (120s)"
 
 class todoManage:
-    # TODO列表
-    items: list[dict] = []
+    def __init__(self) -> None:
+        # TODO列表
+        self.items = []
+    
     def update_todo(self, id: id, content: str, status: str, activeForm: str):
-        print(f"\n[系统日志] 正在调用todo管理工具修改/创建todo")
-        for item in todoManage.items:
-            if id == item.id:
+        # print(f"\n[系统日志] 正在调用todo管理工具修改/创建todo")
+        for item in self.items:
+            if id == item['id']:
                 # 相同id，更新item数据
-                item.content = content
-                item.status = status
-                item.activeForm = activeForm
-            break
+                item['content'] = content
+                item['status'] = status
+                item['activeForm'] = activeForm
+                break
         else:
             # 新增
-            todoManage.items.append({
+            self.items.append({
                 "id": id,
                 "status": status,
                 "content": content,
                 "activeForm": activeForm
             })
-        return todoManage.items
+        self.render()
+        return self.items
     
     def render(self) -> str:
-        if not todoManage.items:
+        if not self.items:
             return "No todos."
         lines = []
-        for item in todoManage.items:
+        for item in self.items:
             marker = {"pending": "[ ]", "in_progress": "[>]", "completed": "[x]"}[item["status"]]
             lines.append(f"{marker} #{item['id']}: {item['activeForm']}")
-        done = sum(1 for t in todoManage.items if t["status"] == "completed")
-        lines.append(f"\n({done}/{len(todoManage.items)} completed)")
-        return "\n".join(lines)
+        done = sum(1 for t in self.items if t["status"] == "completed")
+        lines.append(f"\n({done}/{len(self.items)} completed)")
+        result = "\n".join(lines)
+        print(f"\r{result}", flush=True)
+        #print(self.items)
+        return 
 
 TODO = todoManage()
 
@@ -88,7 +117,24 @@ tools = [
                         "description": "文件的完整路径，不能是目录名"
                     }
                 },
-                "required": ["location"]
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_bash",
+            "description": "执行系统命令。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "执行的命令。"
+                    },
+                },
+                "required": ["command"]
             }
         }
     },
@@ -101,19 +147,19 @@ tools = [
                 "type": "object",
                 "properties": {
                     "id": {
-                        "type": "int",
+                        "type": "integer",
                         "description": "计划条目的id, 修改现有计划状态和内容就传入已有的id, 新增就传入新的id"
                     },
                     "content": {
-                        "type": "String",
+                        "type": "string",
                         "description": "计划的总标题"
                     },
                     "status": {
-                        "type": "String",
+                        "type": "string",
                         "description": "该计划条目的状态, 有三种状态, 分别是: pending,in_progress,completed"
                     },
                     "activeForm": {
-                        "type": "String",
+                        "type": "string",
                         "description": "该计划条目执行后的进度描述, 若还没有开始执行, 则传入一个预备的初始状态"
                     }
                 },
@@ -126,7 +172,7 @@ tools = [
 
 # 系统提示词
 messages = [
-    {"role": "system", "content": "你是一个得力助手，你在执行任务之前，要先使用update_todo创建一个任务列表，并在开始之前标记它为in_progress状态，在完成时标记它为done状态。思考内容要以中文输出。"},
+    {"role": "system", "content": "你是一个得力助手，你在执行任务之前，要先使用update_todo创建一个任务列表，并在开始之前标记它为in_progress状态，在完成时标记它为done状态，在执行任务之前，你都必须更新这个todo列表，需要注意的是，如果有多个任务，你需要为每个任务都创建一个条目，也就是需要执行多次update_todo工具，在每次执行任务之前，你都必须先执行update_todo去更新相应任务的状态。"},
 ]
 
 # 工具处理中心
@@ -134,11 +180,12 @@ TOOL_HANDLERS = {
     "get_weather":       lambda **kw: get_weather(kw["location"]),
     "read_file":  lambda **kw: read_file(kw["path"]),
     "update_todo":  lambda **kw: TODO.update_todo(int(kw["id"]), kw["content"], kw["status"], kw["activeForm"]),
+    "run_bash": lambda **kw: run_bash(kw['command'])
 }
 
 # 工具函数
 def get_weather(location: str):
-    print(f"\n[系统日志] 正在调用本地工具获取天气: {location}")
+    # print(f"\n[系统日志] 正在调用本地工具获取天气: {location}")
     # 真实场景下这里会请求天气API
     if "北京" in location:
         return '{"temperature": "999℃", "condition": "晴天"}'
@@ -178,7 +225,7 @@ while True:
         })
 
     completion = client.chat.completions.create(
-        model="qwen3.6-plus",
+        model="deepseek-chat",
         messages=messages,
         tools=tools,
         stream=True
@@ -220,7 +267,8 @@ while True:
                 else:
                     # 为现有的工具调用拼接参数
                     # 对象和dict不一样，对象可以用.来访问属性，dict只能通过key来访问属性
-                    tool_calls[item.index]['function']['arguments'] += item.function.arguments
+                    if item.function.arguments:
+                        tool_calls[item.index]['function']['arguments'] += item.function.arguments
         
         # 输出思考内容
         if hasattr(resultDelta, "reasoning_content") and resultDelta.reasoning_content != None and THINK_OUTPUT:
@@ -236,30 +284,28 @@ while True:
                 # 调用工具
                 for tool in tool_calls:
                     handler = TOOL_HANDLERS.get(tool['function']['name'])
-                    arguments = json.loads(tool_calls[0]['function']['arguments'])
+                    arguments = json.loads(tool['function']['arguments'])
                     toolResult = "工具返回内容为空，请直接告诉用户，程序执行错误，并输出当前任务列表。"
                     try:
                         toolResult = handler(**arguments)
                     except Exception as e:
                         toolResult = f"工具执行出错: {str(e)}，请你检查自己的函数名/参数是否输出正确，如果没有问题，则提示用户。" 
-                    # print(toolResult)
-                    # print(quote(str(toolResult)))
-                    toolResult = quote(str(toolResult))
+
+                    toolResult = str(toolResult)
                     # 追加工具调用结果
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": tool_calls[0]['id'],
-                        "name": tool_calls[0]['function']['name'],
+                        "tool_call_id": tool['id'],
+                        "name": tool['function']['name'],
                         "content": toolResult
                     })
-                    if tool['function']['name'] == 'update_todo':
-                        print(TODO.render())
+                    
 
         # 输出最终结果
         if hasattr(resultDelta, "content") and resultDelta.content != None:
             print(resultDelta.content, end='', flush=True)
             resultContent += resultDelta.content
-    print(resultContent)
+
     # 追加模型输出的最终内容
     messages.append({
         "role": "assistant",
