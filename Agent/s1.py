@@ -6,11 +6,12 @@ import json
 from urllib.parse import quote
 from dotenv import load_dotenv
 
-import os
 import tool.tool_defination as td
 
-# 加载 .env 文件（通常放在项目根目录）
-load_dotenv("/Users/maorongrong/workspace/python/learning-claude-code/env.local")
+# 获取当前脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# 加载 .env 文件（放在脚本同级目录）
+load_dotenv(os.path.join(SCRIPT_DIR, "env.local"))
 
 # 读取变量
 api_key = os.environ.get("API_KEY")
