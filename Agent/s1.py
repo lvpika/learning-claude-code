@@ -5,8 +5,8 @@ from openai import OpenAI
 import json
 from urllib.parse import quote
 from dotenv import load_dotenv
-
-import tool.tool_defination as td
+import prompts.prompt_repo
+import tools.tool_defination as td
 
 # 获取当前脚本所在目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,14 +32,9 @@ client = OpenAI(
 
 THINK_OUTPUT = True
 
-
-# 系统提示词
 messages = [
-    {"role": "system", "content": "你是一个得力助手，你在执行任务之前，要先使用update_todo创建一个任务列表，并在开始之前标记它为in_progress状态，在完成时标记它为done状态，在执行任务之前，你都必须更新这个todo列表，需要注意的是，如果有多个任务，你需要为每个任务都创建一个条目，也就是需要执行多次update_todo工具，在每次执行任务之前，你都必须先执行update_todo去更新相应任务的状态。"},
+    {"role": "system", "content": prompts.prompt_repo.PARENT_SYSTEM_PROMPT},
 ]
-
-
-
 
 # Agent Loop
 def agent_loop():
@@ -71,7 +66,7 @@ def agent_loop():
         completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
-            tools=td.TOOLS,
+            tools=td.PARENT_AGENT_TOOLS,
             stream=True
         )
 
@@ -149,6 +144,7 @@ def agent_loop():
             # 大模型输出的给用户内容
             if hasattr(resultDelta, "content") and resultDelta.content != None:
                 print(resultDelta.content, end='', flush=True)
+                # 这里的ressultContent应该每一轮都要重置才对，不然每次追加到上下文的信息都包括前几轮的内容
                 resultContent += resultDelta.content
 
         # 追加模型输出给用户的内容到上下文
