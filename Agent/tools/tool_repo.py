@@ -104,6 +104,9 @@ def run_sub_agent(prompt: str) -> str:
         })
 
 
+def skill_directory():
+    return
+
 def get_weather(location: str):
     # print(f"\n[系统日志] 正在调用本地工具获取天气: {location}")
     # 真实场景下这里会请求天气API
