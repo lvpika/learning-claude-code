@@ -1,5 +1,6 @@
 
 # 工具函数
+from ntpath import isdir
 from openai.types.chat.chat_completion_content_part_param import File
 from ast import List
 import os
@@ -10,6 +11,9 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 import prompts.prompt_repo
 import tools.tool_defination as td
+import pathlib
+import os
+
 
 def run_sub_agent(prompt: str) -> str:
     print(f"\r调用了子Agent：${prompt}")
@@ -103,9 +107,6 @@ def run_sub_agent(prompt: str) -> str:
             "content": resultContent
         })
 
-
-def skill_directory():
-    return
 
 def get_weather(location: str):
     # print(f"\n[系统日志] 正在调用本地工具获取天气: {location}")

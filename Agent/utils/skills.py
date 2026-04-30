@@ -1,21 +1,6 @@
-import pathlib
 import os
+import pathlib
 import re
-
-# print("当前工作目录:", os.getcwd())
-# print("当前文件目录:", os.path.dirname(os.path.abspath(__file__)))
-# base_url = pathlib.Path(".")
-# p = base_url.rglob("*.py")
-# for f in base_url.rglob("*.py"):
-#     f.is_file()
-#     content = f.read_text()
-    # if len(content) > 100:
-    #     print(content[0:100], end="")
-    #     print("...")
-    # else:
-    #     print(content)
-
-
 def skill_directory():
     """
         返回技能仓库dict
@@ -59,6 +44,3 @@ def skill_directory():
                     skill_item["content"] = skill_head_match.group(2)
                     result.append(skill_item)
     return result
-
-print(skill_directory())
-

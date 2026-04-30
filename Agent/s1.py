@@ -7,6 +7,8 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 import prompts.prompt_repo
 import tools.tool_defination as td
+import utils.skills
+
 
 # 获取当前脚本所在目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
